@@ -113,7 +113,7 @@ jobs:
               --browser ${{ env.BROWSER_PATH }}
         env:
           SPLIT: ${{ inputs.parallel-runs }}
-          SPLIT_INDEX: ${{ matrix.index }}
+          SPLIT_INDEX: ${{ strategy.job-index }}
 
       - name: Stop server and wait for coverage file
         if: inputs.enable-coverage
@@ -130,7 +130,7 @@ jobs:
           path: ./apps/${{ github.event.repository.name }}/.cypress-coverage/clover.xml
       - name: Compress Cypress Videos
         if: always() && steps.ui-tests.outcome == 'failure'
-        run: | 
+        run: |
             if find ./cypressVideos -mindepth 1 | read; then
               zip -r cypress_recordings.zip ./cypressVideos
             fi
@@ -141,7 +141,7 @@ jobs:
           name: Cypress CI Video Recordings
           path: ./cypress_recordings.zip
 
-        
+
 
       - name: Upload coverage data
         uses: actions/upload-artifact@v7
@@ -149,7 +149,7 @@ jobs:
         with:
           name: coverage-py-${{ matrix.index }}
           path: ./sites/*-coverage*.xml
-    
+
       - name: Setup tmate session
         uses: mxschmitt/action-tmate@v3
         if: ${{ failure() && contains( github.event.pull_request.labels.*.name, 'debug-gha') }}
