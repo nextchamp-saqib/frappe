@@ -9,6 +9,8 @@ dist/
 # build/
 frappe/docs/current
 frappe/public/dist
+frappe/public/frontend
+frappe/www/settings.html
 .vscode
 .vs
 node_modules
