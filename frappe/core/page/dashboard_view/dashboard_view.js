@@ -4,13 +4,18 @@
 /**
  * `/desk/dashboard-view/<name>` is the one desk dashboard route. The page loads
  * the `Dashboard` the route names, clears whatever drew last, and shows one of
- * three states.
+ * the states below.
  *
  * An installed app claims the document in its own `onload` handler, which puts
  * `{name, props}` on `__onload.island`. When the key is present, an island
  * draws the dashboard. When the key is absent, the legacy widget renderer draws
  * it. An unknown name belongs to neither, and the page shows the missing state.
- * There is no third answer and no null sentinel.
+ *
+ * A standard dashboard that ships an Insights version also carries
+ * `__onload.dashboards`, the site's System Settings choice. Classic draws it with
+ * the legacy renderer, plus a banner offering the Insights board when Insights
+ * claims it. Insights draws the claimed island, or the install-Insights state
+ * when nothing claims it. Every other dashboard follows its claim alone.
  *
  * Nothing stays alive across a draw. Every entry to the page builds what it
  * draws, and `clear()` releases it, so the island re-mounts instead of taking
@@ -53,7 +58,15 @@ frappe.pages["dashboard-view"].on_page_load = function (wrapper) {
 		clear();
 		if (!doc) return show_missing(name);
 		// `as_dict` drops an empty `__onload`, so no key at all is the common case.
-		if (doc.__onload?.island) return show_island(doc);
+		const claimed = Boolean(doc.__onload?.island);
+		const dashboards = doc.__onload?.dashboards;
+		if (dashboards === "Classic") {
+			show_legacy(doc);
+			if (claimed) show_insights_banner();
+			return;
+		}
+		if (claimed) return show_island(doc);
+		if (dashboards === "Insights") return show_install_insights(doc);
 		show_legacy(doc);
 	});
 
@@ -94,6 +107,50 @@ frappe.pages["dashboard-view"].on_page_load = function (wrapper) {
 				],
 			})
 		);
+	}
+
+	/**
+	 * The site opens this dashboard in Insights, and no Insights board claims it.
+	 * A new site without Insights lands here, and so does a site that removes it.
+	 */
+	function show_install_insights(doc) {
+		set_island_title(doc.name, doc.name);
+		content.append(
+			frappe.ui.empty_state({
+				icon: "layout-dashboard",
+				title: __("Install Insights to see dashboards and charts"),
+				description: __("The {0} dashboard opens in Insights on this site.", [
+					__(doc.name),
+				]),
+				actions: [
+					{
+						label: __("About Insights"),
+						href: "https://frappe.io/insights",
+						icon: "external-link",
+					},
+				],
+			})
+		);
+	}
+
+	/**
+	 * Offers the Insights board above a classic dashboard that has one. The choice
+	 * is the site's, so only whoever can change System Settings sees the offer.
+	 */
+	function show_insights_banner() {
+		if (!frappe.model.can_write("System Settings")) return;
+		frappe.ui
+			.alert({
+				theme: "blue",
+				title: __("This dashboard has an Insights version"),
+				description: __("Set Dashboards to Insights in System Settings to open it."),
+				footer: frappe.ui.button({
+					label: __("Open System Settings"),
+					onclick: () => frappe.set_route("Form", "System Settings"),
+				}),
+			})
+			.css("margin", "var(--margin-md)")
+			.prependTo(content);
 	}
 
 	/**
