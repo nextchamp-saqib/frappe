@@ -704,8 +704,23 @@ body {
 			opacity: 1;
 		}
 
+		// An island draws the card's body and handles its own clicks, so the card opens no list.
+		&.number-widget-island {
+			cursor: default;
+
+			&:hover {
+				border-color: var(--outline-gray-1);
+			}
+		}
+
 		.widget-body {
 			text-align: left;
+
+			// A definite height, as the chart widget gives its island. An island fills
+			// the element it is given, and against an auto height it fills nothing.
+			.number-card-island {
+				height: 100px;
+			}
 
 			.number-card-loading {
 				@include flex(flex, space-between, center, null);
