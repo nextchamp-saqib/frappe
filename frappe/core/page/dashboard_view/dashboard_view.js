@@ -49,6 +49,9 @@ frappe.pages["dashboard-view"].on_page_load = function (wrapper) {
 		if (!name) return frappe.set_route("List", "Dashboard");
 
 		const route = frappe.get_route_str();
+		// `__onload` answers which view to draw, and a System Settings save can
+		// change that answer while the cached document still holds the old one.
+		frappe.model.clear_doc("Dashboard", name);
 		const doc = await frappe.model.with_doc("Dashboard", name);
 		// The route can move, inside this page or off it, while the fetch is
 		// pending. Two fetches can also land out of order, and the older one would
