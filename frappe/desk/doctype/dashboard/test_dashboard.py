@@ -94,3 +94,15 @@ class TestDashboardView(IntegrationTestCase):
 	def test_a_custom_dashboard_carries_nothing(self):
 		doc = self.dashboard({"insights_dashboard": "test_view_rule"}, is_standard=0)
 		self.assertNotIn("dashboards", self.onload(doc))
+
+	def test_a_dashboard_in_a_custom_module_carries_nothing(self):
+		doc = frappe.get_doc(
+			{
+				"doctype": "Dashboard",
+				"name": "Test View Rule",
+				"is_standard": 1,
+				"module": "Custom Test Module",
+			}
+		)
+		doc.run_method("onload")
+		self.assertNotIn("dashboards", doc.get_onload())
