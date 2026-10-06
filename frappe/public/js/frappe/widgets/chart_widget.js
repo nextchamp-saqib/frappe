@@ -148,6 +148,9 @@ export default class ChartWidget extends Widget {
 	 * draws, and the props came with the document.
 	 */
 	make_island() {
+		// The document loads after a round trip, by which time the page may have dropped the chart.
+		if (this.destroyed) return;
+
 		this.setup_container();
 
 		if (!this.in_customize_mode) {
@@ -241,6 +244,7 @@ export default class ChartWidget extends Widget {
 	}
 
 	destroy() {
+		this.destroyed = true;
 		this.unmount_island();
 	}
 
