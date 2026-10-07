@@ -94,6 +94,7 @@
   "allowed_doctypes_for_guest_uploads",
   "app_tab",
   "default_app",
+  "dashboards",
   "updates_tab",
   "system_updates_section",
   "disable_system_update_notification",
@@ -692,6 +693,14 @@
    "label": "Default App"
   },
   {
+   "default": "Insights",
+   "description": "How the standard dashboards that ship an Insights version open. Insights needs the Insights app.",
+   "fieldname": "dashboards",
+   "fieldtype": "Select",
+   "label": "Dashboards",
+   "options": "Insights\nClassic"
+  },
+  {
    "depends_on": "login_with_email_link",
    "description": "You can set a high value here if multiple users will be logging in from the same network.",
    "fieldname": "rate_limit_email_link_login",
@@ -857,7 +866,7 @@
  "icon": "fa fa-cog",
  "issingle": 1,
  "links": [],
- "modified": "2026-08-06 17:22:18.039321",
+ "modified": "2026-10-06 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Core",
  "name": "System Settings",
