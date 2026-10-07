@@ -13,9 +13,10 @@
  *
  * A standard dashboard that ships an Insights version also carries
  * `__onload.dashboards`, the site's System Settings choice. Classic draws it with
- * the legacy renderer, plus a banner offering the Insights board when Insights
- * claims it. Insights draws the claimed island, or the install-Insights state
- * when nothing claims it. Every other dashboard follows its claim alone.
+ * the legacy renderer, plus a prompt to open the Insights board for a System
+ * Manager when Insights claims it and the site has not answered. Insights draws
+ * the claimed island, or the install-Insights state when nothing claims it.
+ * Every other dashboard follows its claim alone.
  *
  * Nothing stays alive across a draw. Every entry to the page builds what it
  * draws, and `clear()` releases it, so the island re-mounts instead of taking
@@ -42,7 +43,12 @@ frappe.pages["dashboard-view"].on_page_load = function (wrapper) {
 	// The island on screen, while one is.
 	let island = null;
 
-	$(wrapper).on("show", async () => {
+	$(wrapper).on("show", show);
+	$(wrapper).on("hide", clear);
+
+	async function show() {
+		// Open's request calls this after it lands, and the reader may have left.
+		if (frappe.get_route()[0] !== "dashboard-view") return;
 		const name = frappe.get_route()[1];
 		// The route always carries a name. A bare /desk/dashboard-view names no
 		// document, so send the reader to the list instead.
@@ -65,15 +71,15 @@ frappe.pages["dashboard-view"].on_page_load = function (wrapper) {
 		const dashboards = doc.__onload?.dashboards;
 		if (dashboards === "Classic") {
 			show_legacy(doc);
-			if (claimed) show_insights_banner();
+			if (claimed && doc.__onload.show_insights_dashboards_prompt) {
+				show_insights_dashboards_prompt();
+			}
 			return;
 		}
 		if (claimed) return show_island(doc);
 		if (dashboards === "Insights") return show_install_insights(doc);
 		show_legacy(doc);
-	});
-
-	$(wrapper).on("hide", clear);
+	}
 
 	// Releases everything the last draw left, in one place, so no renderer has
 	// to know what drew before it. `empty()` alone would drop the widget nodes
@@ -136,24 +142,40 @@ frappe.pages["dashboard-view"].on_page_load = function (wrapper) {
 		);
 	}
 
-	/**
-	 * Offers the Insights board above a classic dashboard that has one. The choice
-	 * is the site's, so only whoever can change System Settings sees the offer.
-	 */
-	function show_insights_banner() {
-		if (!frappe.model.can_write("System Settings")) return;
-		frappe.ui
-			.alert({
-				theme: "blue",
-				title: __("This dashboard has an Insights version"),
-				description: __("Set Dashboards to Insights in System Settings to open it."),
-				footer: frappe.ui.button({
-					label: __("Open System Settings"),
-					onclick: () => frappe.set_route("Form", "System Settings"),
-				}),
+	/** Asks a System Manager whether the site opens its Insights dashboards. */
+	function show_insights_dashboards_prompt() {
+		const submit = (action) =>
+			frappe.xcall(
+				"frappe.desk.doctype.dashboard.dashboard.submit_insights_dashboards_prompt",
+				{ action }
+			);
+		const prompt = $(`<div class="dashboard-view-prompt">
+			<span class="dashboard-view-prompt__text">${__("This dashboard has an Insights version")}</span>
+			<span class="dashboard-view-prompt__actions"></span>
+		</div>`);
+		prompt.find(".dashboard-view-prompt__actions").append(
+			frappe.ui.button({
+				label: __("Open"),
+				onclick: () =>
+					new Promise((resolve) =>
+						frappe.confirm(
+							__(
+								"Open the Insights version of every dashboard that has one, for everyone on this site? You can switch back in System Settings."
+							),
+							() => resolve(submit("open_insights_dashboards").then(show)),
+							resolve,
+							__("Open Insights")
+						)
+					),
+			}),
+			frappe.ui.button({
+				icon: "x",
+				variant: "ghost",
+				tooltip: __("Dismiss"),
+				onclick: () => submit("keep_classic_dashboards").then(() => prompt.remove()),
 			})
-			.css("margin", "var(--margin-md)")
-			.prependTo(content);
+		);
+		prompt.prependTo(content);
 	}
 
 	/**
