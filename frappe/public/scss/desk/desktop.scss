@@ -716,12 +716,6 @@ body {
 		.widget-body {
 			text-align: left;
 
-			// A definite height, as the chart widget gives its island. An island fills
-			// the element it is given, and against an auto height it fills nothing.
-			.number-card-island {
-				height: 100px;
-			}
-
 			.number-card-loading {
 				@include flex(flex, space-between, center, null);
 				height: 28px;
