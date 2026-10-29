@@ -2,7 +2,7 @@
 # License: MIT. See LICENSE
 """Document tools reuse REST API v2 permissions and controller hooks."""
 
-from typing import Any
+from typing import Annotated, Any
 
 from pydantic import Field
 
@@ -12,12 +12,13 @@ from frappe.api import v2
 from frappe.mcp.tools import DocumentName, Tool, ToolArguments, form_dict
 from frappe.model import child_table_fields, default_fields, optional_fields, table_fields
 
-DocumentFields = list[str | dict[str, list[str]]] | None
-WRITE_RESULT_FIELDS = ["name", "modified"]
+DocumentFields = (
+	Annotated[list[str | dict[str, Annotated[list[str], Field(min_length=1)]]], Field(min_length=1)] | None
+)
 FIELDS_DESCRIPTION = (
 	'Fields to return. A table field as {"<table field>": ["<child field>", ...]}; "*" for all fields.'
 )
-WRITE_FIELDS_DESCRIPTION = FIELDS_DESCRIPTION + " Default: doctype, name and modified."
+WRITE_FIELDS_DESCRIPTION = FIELDS_DESCRIPTION + " doctype and name always come back. Default: modified."
 DATA_DESCRIPTION = (
 	'Field values. A table field takes a list of rows, such as {"<table field>": [{"<child field>": ...}]}.'
 )
@@ -65,6 +66,7 @@ class DeleteDocumentArguments(ToolArguments):
 
 
 def get_document(doctype: str, name: str, fields: DocumentFields = None) -> dict:
+	check_fields(doctype, fields)
 	return document_fields(v2.read_doc(doctype, name), fields)
 
 
@@ -90,38 +92,55 @@ def list_documents(
 
 
 def create_document(doctype: str, data: dict[str, Any], fields: DocumentFields = None) -> dict:
+	check_fields(doctype, fields)
 	with form_dict(data):
 		doc = v2.create_doc(doctype)
-	return {"doctype": doc["doctype"], **document_fields(doc, fields or WRITE_RESULT_FIELDS)}
+	return write_result(doc, fields)
 
 
 def update_document(doctype: str, name: str, data: dict[str, Any], fields: DocumentFields = None) -> dict:
+	check_fields(doctype, fields)
 	with form_dict(data):
 		doc = v2.update_doc(doctype, name)
-	return {"doctype": doc["doctype"], **document_fields(doc, fields or WRITE_RESULT_FIELDS)}
+	return write_result(doc, fields)
 
 
 def delete_document(doctype: str, name: str) -> None:
 	v2.delete_doc(doctype, name)
 
 
+def write_result(doc: dict, fields: DocumentFields) -> dict:
+	return {"doctype": doc["doctype"], "name": doc["name"], **document_fields(doc, fields or ["modified"])}
+
+
+def check_fields(doctype: str, fields: DocumentFields) -> None:
+	meta = frappe.get_meta(doctype)
+	for field in fields or ():
+		if field == "*":
+			continue
+		for fieldname, child_fields in field.items() if isinstance(field, dict) else ((field, None),):
+			df = meta.get_field(fieldname)
+			if child_fields is not None:
+				if not (df and df.fieldtype in table_fields):
+					frappe.throw(_("{0} is not a table field of {1}").format(fieldname, doctype))
+				check_fields(df.options, child_fields)
+			elif not df and fieldname not in (*default_fields, *optional_fields, *child_table_fields):
+				frappe.throw(_("{0} is not a field of {1}").format(fieldname, doctype))
+
+
 def document_fields(doc: dict, fields: DocumentFields = None) -> dict:
-	"""Pick `fields` from a document dict, with JSON values parsed and nulls left out."""
+	"""Pick checked `fields` from a document dict, with JSON values parsed and nulls left out."""
 	meta = frappe.get_meta(doc["doctype"])
 	selected, child_fields = {}, {}
 	for field in fields or ["*"]:
 		if field == "*":
 			selected.update(doc)
-			continue
-		for fieldname, child in field.items() if isinstance(field, dict) else ((field, None),):
-			df = meta.get_field(fieldname)
-			if child is not None and not (df and df.fieldtype in table_fields):
-				frappe.throw(_("{0} is not a table field of {1}").format(fieldname, meta.name))
-			if not df and fieldname not in (*default_fields, *optional_fields, *child_table_fields):
-				frappe.throw(_("{0} is not a field of {1}").format(fieldname, meta.name))
-			if fieldname in doc:
-				selected[fieldname] = doc[fieldname]
+		elif isinstance(field, dict):
+			for fieldname, child in field.items():
+				selected[fieldname] = doc.get(fieldname)
 				child_fields[fieldname] = child
+		else:
+			selected[field] = doc.get(field)
 
 	result = {}
 	for fieldname, value in selected.items():
@@ -146,7 +165,7 @@ LIST_DOCUMENTS = Tool(
 
 GET_DOCUMENT = Tool(
 	name="get_document",
-	description="Get one document with its child tables.",
+	description="Get one document with its child tables. Null values are left out.",
 	arguments=GetDocumentArguments,
 	handler=get_document,
 	annotations={"readOnlyHint": True},

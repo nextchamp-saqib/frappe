@@ -276,6 +276,13 @@ class TestDocumentFields(McpTestCase):
 				result = self.call("get_document", name=self.name, fields=fields)
 				self.assertTrue(result["isError"])
 				self.assertIn("is not a", result["content"][0]["text"])
+		for fields in ([], [{"rows": []}]):
+			with self.subTest(fields=fields):
+				self.assertTrue(self.call("get_document", name=self.name, fields=fields)["isError"])
+		with patch("frappe.api.v2.update_doc") as update_doc:
+			result = self.call("update_document", name=self.name, data={"label": "Typo"}, fields=["lable"])
+		self.assertTrue(result["isError"])
+		update_doc.assert_not_called()
 
 	def test_writes_return_name_and_modified(self):
 		created = self.result("create_document", data={"label": "Created", "rows": [{"label": "Row"}]})
@@ -292,4 +299,4 @@ class TestDocumentFields(McpTestCase):
 		self.assertEqual(result["config"], {"limit": 20})
 		self.assertEqual(result["rows"][0]["config"], [1, 2])
 		result = self.result("update_document", name=self.name, data={"label": "Updated"}, fields=["label"])
-		self.assertEqual(result, {"doctype": self.parent, "label": "Updated"})
+		self.assertEqual(result, {"doctype": self.parent, "name": self.name, "label": "Updated"})
