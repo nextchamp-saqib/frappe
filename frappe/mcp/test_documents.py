@@ -4,6 +4,7 @@
 from unittest.mock import patch
 
 import frappe
+from frappe.core.doctype.doctype.test_doctype import new_doctype
 from frappe.desk.doctype.todo.todo import ToDo
 from frappe.mcp.test_utils import McpTestCase
 
@@ -194,3 +195,101 @@ class TestGetDocuments(McpTestCase):
 		result = self.result(doctype="ToDo", filters=self.filters, start=3)
 		self.assertEqual(result["documents"], [])
 		self.assertFalse(result["has_next_page"])
+
+
+class TestDocumentFields(McpTestCase):
+	@classmethod
+	def setUpClass(cls):
+		super().setUpClass()
+		if not frappe.db.exists("Role", "MCP Desk Tester"):
+			frappe.get_doc(doctype="Role", role_name="MCP Desk Tester", desk_access=1).insert()
+		values = [
+			{"fieldname": "label", "fieldtype": "Data"},
+			{"fieldname": "config", "fieldtype": "JSON"},
+			{"fieldname": "note", "fieldtype": "Data"},
+		]
+		cls.child = new_doctype(fields=values, istable=1).insert().name
+		cls.parent = (
+			new_doctype(
+				fields=[*values, {"fieldname": "rows", "fieldtype": "Table", "options": cls.child}],
+				permissions=[{"role": "MCP Desk Tester", "read": 1, "write": 1, "create": 1}],
+			)
+			.insert()
+			.name
+		)
+		frappe.db.commit()  # nosemgrep
+
+	@classmethod
+	def tearDownClass(cls):
+		frappe.set_user("Administrator")
+		frappe.delete_doc("DocType", cls.parent, force=True)
+		frappe.delete_doc("DocType", cls.child, force=True)
+		frappe.db.commit()  # nosemgrep
+		super().tearDownClass()
+
+	def setUp(self):
+		super().setUp()
+		self.name = (
+			frappe.get_doc(
+				doctype=self.parent,
+				label="Parent",
+				config={"limit": 10},
+				rows=[{"label": "Row", "config": [1, 2]}],
+			)
+			.insert()
+			.name
+		)
+
+	def call(self, tool, **arguments):
+		return self.request(
+			{
+				"jsonrpc": "2.0",
+				"id": 1,
+				"method": "tools/call",
+				"params": {"name": tool, "arguments": {"doctype": self.parent, **arguments}},
+			}
+		).json["result"]
+
+	def result(self, tool="get_document", **arguments):
+		result = self.call(tool, **arguments)
+		self.assertFalse(result["isError"], result)
+		return result["structuredContent"]
+
+	def test_json_values_are_parsed_and_nulls_left_out(self):
+		result = self.result(name=self.name)
+		self.assertEqual(result["config"], {"limit": 10})
+		self.assertNotIn("note", result)
+		self.assertEqual(result["rows"][0]["config"], [1, 2])
+		self.assertNotIn("note", result["rows"][0])
+		self.assertNotIn(None, result["rows"][0].values())
+
+	def test_fields_pick_document_and_table_fields(self):
+		result = self.result(name=self.name, fields=["label", {"rows": ["label", "config"]}])
+		self.assertEqual(result, {"label": "Parent", "rows": [{"label": "Row", "config": [1, 2]}]})
+		result = self.result(name=self.name, fields=["name", "rows"])
+		self.assertEqual(set(result), {"name", "rows"})
+		self.assertEqual(result["rows"][0]["label"], "Row")
+
+	def test_unknown_fields_are_rejected(self):
+		for fields in (["lable"], [{"label": ["label"]}], [{"rows": ["lable"]}]):
+			with self.subTest(fields=fields):
+				result = self.call("get_document", name=self.name, fields=fields)
+				self.assertTrue(result["isError"])
+				self.assertIn("is not a", result["content"][0]["text"])
+
+	def test_writes_return_name_and_modified(self):
+		created = self.result("create_document", data={"label": "Created", "rows": [{"label": "Row"}]})
+		self.assertEqual(set(created), {"doctype", "name", "modified"})
+		self.assertEqual(created["doctype"], self.parent)
+		updated = self.result("update_document", name=created["name"], data={"label": "Updated"})
+		self.assertEqual(set(updated), {"doctype", "name", "modified"})
+		self.assertEqual(
+			updated["modified"], str(frappe.db.get_value(self.parent, created["name"], "modified"))
+		)
+
+	def test_writes_return_chosen_fields(self):
+		result = self.result("update_document", name=self.name, data={"config": {"limit": 20}}, fields=["*"])
+		self.assertEqual(result["config"], {"limit": 20})
+		self.assertEqual(result["rows"][0]["config"], [1, 2])
+		result = self.result("update_document", name=self.name, data={"label": "Updated"}, fields=["label"])
+		self.assertEqual(result, {"doctype": self.parent, "label": "Updated"})

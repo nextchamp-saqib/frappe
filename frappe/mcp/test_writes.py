@@ -50,7 +50,10 @@ class TestWriteDocument(McpTestCase):
 
 	def test_create(self):
 		result = self.result(
-			tool="create_document", doctype="ToDo", data={"description": "Created through MCP"}
+			tool="create_document",
+			doctype="ToDo",
+			data={"description": "Created through MCP"},
+			fields=["name", "owner"],
 		)
 		self.assertEqual(result["owner"], self.user)
 		self.assertEqual(frappe.db.get_value("ToDo", result["name"], "description"), "Created through MCP")
@@ -198,7 +201,7 @@ class TestWriteDocument(McpTestCase):
 
 	def test_rest_parity(self):
 		result = self.result(
-			tool="create_document", doctype="ToDo", data={"description": "MCP parity fixture"}
+			tool="create_document", doctype="ToDo", data={"description": "MCP parity fixture"}, fields=["*"]
 		)
 		mcp_name = result["name"]
 		response = self.request(
@@ -208,7 +211,9 @@ class TestWriteDocument(McpTestCase):
 		rest_name = response.json["data"]["name"]
 		self.names.append(rest_name)
 		self.assertEqual(response.json["data"]["owner"], result["owner"])
-		result = self.result(tool="update_document", doctype="ToDo", name=mcp_name, data={"status": "Closed"})
+		result = self.result(
+			tool="update_document", doctype="ToDo", name=mcp_name, data={"status": "Closed"}, fields=["*"]
+		)
 		response = self.request({"status": "Closed"}, method="PUT", path=f"/api/v2/document/ToDo/{rest_name}")
 		self.assertEqual(response.status_code, 200)
 		self.assertEqual(response.json["data"]["status"], result["status"])
